@@ -37,7 +37,8 @@ const TRAVELER_OPTIONS: TravelerOption[] = [
   { label: '10+ People', value: '12' },
 ];
 
-function formatDate(d: Date) {
+function formatDate(d: Date | null) {
+  if (!d) return '';
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
