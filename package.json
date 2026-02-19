@@ -1,48 +1,39 @@
 {
-  "name": "best-travel-plan",
+  "name": "best-travel-plan-mobile",
   "version": "1.0.0",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web",
-    "build:android": "eas build --platform android",
-    "build:android:preview": "eas build --platform android --profile preview",
-    "build:ios": "eas build --platform ios",
-    "submit:android": "eas submit --platform android",
-    "submit:ios": "eas submit --platform ios",
-    "update": "eas update --branch production"
+    "build:android": "eas build --platform android --profile production",
+    "build:ios": "eas build --platform ios --profile production"
   },
   "dependencies": {
+    "@expo/vector-icons": "^14.0.0",
     "@react-native-async-storage/async-storage": "1.23.1",
     "@react-native-community/datetimepicker": "8.2.0",
-    "@react-navigation/native": "^6.1.9",
+    "@react-navigation/native": "^6.1.0",
     "@supabase/supabase-js": "^2.39.0",
-    "date-fns": "^3.0.0",
     "expo": "~52.0.0",
-    "expo-build-properties": "^1.0.10",
-    "expo-constants": "~17.0.0",
-    "expo-linear-gradient": "~14.0.1",
+    "expo-build-properties": "~0.13.1",
+    "expo-font": "~13.0.0",
     "expo-linking": "~7.0.0",
     "expo-router": "~4.0.0",
-    "expo-secure-store": "~14.0.0",
+    "expo-splash-screen": "~0.29.0",
     "expo-status-bar": "~2.0.0",
-    "lucide-react-native": "^0.344.0",
+    "lucide-react-native": "^0.468.0",
     "react": "18.3.1",
     "react-native": "0.76.5",
-    "react-native-gesture-handler": "~2.20.2",
-    "react-native-reanimated": "~3.16.1",
     "react-native-safe-area-context": "4.12.0",
-    "react-native-screens": "~4.3.0",
+    "react-native-screens": "~4.4.0",
     "react-native-url-polyfill": "^2.0.0",
-    "react-native-web": "~0.19.13"
+    "react-native-svg": "15.8.0"
   },
   "devDependencies": {
-    "@babel/core": "^7.25.2",
-    "@types/react": "~18.3.12",
-    "babel-plugin-module-resolver": "^5.0.0",
-    "typescript": "~5.3.3"
-  },
-  "private": true
+    "@babel/core": "^7.25.0",
+    "@types/react": "~18.3.0",
+    "typescript": "^5.3.0",
+    "babel-plugin-module-resolver": "^5.0.0"
+  }
 }

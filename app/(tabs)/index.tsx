@@ -1,519 +1,551 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
   StyleSheet, SafeAreaView, Platform, Alert, ActivityIndicator,
-  KeyboardAvoidingView, Modal,
+  KeyboardAvoidingView, Modal, FlatList,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Plane, Calendar, MapPin, Users, ChevronDown, X, DollarSign, Clock } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { Plane, Calendar, Users, ChevronDown, X, Minus, Plus, Car, Hotel, Loader2 } from 'lucide-react-native';
 import { supabase } from '@/config/supabase';
-import { ENV } from '@/config/env';
 
-const POPULAR = ['Paris', 'Tokyo', 'New York', 'Bali', 'Dubai', 'Barcelona', 'London', 'Rome'];
-
-type CostBreakdown = {
-  flights: number;
-  accommodation: number;
-  transport: number;
-  food: number;
-  activities: number;
-  total: number;
-  currency: string;
-  nights: number;
-  days: number;
+// ─── Website Theme Colors (exact match) ───────────────────────────────────────
+const C = {
+  navy: '#1E2A36',
+  navyMedium: '#2C3E50',
+  ivory: '#F7F5F2',
+  ivoryDark: '#EDE9E3',
+  champagne: '#D6C5A3',
+  champagneLight: '#EDE4D0',
+  foreground: '#1E2A36',
+  muted: '#6B7280',
+  border: '#D6C5A3',
+  card: '#FFFFFF',
+  accent: '#C9A24D',
+  white: '#FFFFFF',
+  destructive: '#EF4444',
 };
 
-type TravelerOption = { label: string; value: string };
+type Airport = {
+  id: number;
+  name: string;
+  city: string;
+  country: string;
+  iata_code: string;
+  is_major: boolean;
+};
 
-const TRAVELER_OPTIONS: TravelerOption[] = [
-  { label: '1 Person', value: '1' },
-  { label: '2 People', value: '2' },
-  { label: '3 People', value: '3' },
-  { label: '4 People', value: '4' },
-  { label: '5 People', value: '5' },
-  { label: '6 People', value: '6' },
-  { label: '7-10 People', value: '8' },
-  { label: '10+ People', value: '12' },
-];
+type FlightClass = 'economy' | 'business' | 'first';
 
 function formatDate(d: Date | null) {
   if (!d) return '';
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
-
 function formatDateISO(d: Date) {
   return d.toISOString().split('T')[0];
 }
 
-function fmtMoney(n: number, currency = 'USD') {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(n);
+// Airport search component
+function AirportSearch({
+  label,
+  placeholder,
+  value,
+  onSelect,
+  onClear,
+}: {
+  label: string;
+  placeholder: string;
+  value: Airport | null;
+  onSelect: (a: Airport) => void;
+  onClear: () => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Airport[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [showList, setShowList] = useState(false);
+  const timer = useRef<any>(null);
+
+  const search = (q: string) => {
+    setQuery(q);
+    clearTimeout(timer.current);
+    if (q.length < 2) { setResults([]); setShowList(false); return; }
+    timer.current = setTimeout(async () => {
+      setSearching(true);
+      const { data } = await supabase
+        .from('airports')
+        .select('id, name, city, country, iata_code, is_major')
+        .or(`city.ilike.%${q}%,iata_code.ilike.%${q}%,name.ilike.%${q}%`)
+        .order('is_major', { ascending: false })
+        .limit(8);
+      setResults(data ?? []);
+      setShowList(true);
+      setSearching(false);
+    }, 300);
+  };
+
+  const select = (airport: Airport) => {
+    onSelect(airport);
+    setQuery('');
+    setResults([]);
+    setShowList(false);
+  };
+
+  const clear = () => {
+    onClear();
+    setQuery('');
+    setResults([]);
+    setShowList(false);
+  };
+
+  return (
+    <View style={styles.fieldGroup}>
+      <Text style={styles.label}>{label}</Text>
+      <View style={styles.inputWrap}>
+        <Plane color={C.champagne} size={16} />
+        {value ? (
+          <View style={styles.selectedAirport}>
+            <Text style={styles.selectedAirportText}>
+              {value.city} ({value.iata_code})
+            </Text>
+            <Text style={styles.selectedAirportSub}>{value.name}</Text>
+          </View>
+        ) : (
+          <TextInput
+            style={styles.textInput}
+            placeholder={placeholder}
+            placeholderTextColor={C.muted}
+            value={query}
+            onChangeText={search}
+            autoCorrect={false}
+            autoCapitalize="none"
+          />
+        )}
+        {searching && <ActivityIndicator size="small" color={C.champagne} />}
+        {(value || query.length > 0) && (
+          <TouchableOpacity onPress={clear} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <X color={C.muted} size={16} />
+          </TouchableOpacity>
+        )}
+      </View>
+      {showList && results.length > 0 && (
+        <View style={styles.dropdown}>
+          {results.map((a) => (
+            <TouchableOpacity key={a.id} style={styles.dropdownItem} onPress={() => select(a)}>
+              <Text style={styles.dropdownCode}>{a.iata_code}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.dropdownCity}>{a.city}</Text>
+                <Text style={styles.dropdownName} numberOfLines={1}>{a.name} · {a.country}</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </View>
+  );
 }
 
-export default function HomeScreen() {
-  const [destination, setDestination] = useState('');
-  const [startDate, setStartDate] = useState<Date | null>(null);
-  const [endDate, setEndDate] = useState<Date | null>(null);
-  const [travelers, setTravelers] = useState('2');
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<CostBreakdown | null>(null);
-  const [showResult, setShowResult] = useState(false);
-  const [saving, setSaving] = useState(false);
+// Passenger counter row
+function PassengerRow({
+  label, sublabel, value, onChange, min = 0,
+}: { label: string; sublabel: string; value: number; onChange: (n: number) => void; min?: number }) {
+  return (
+    <View style={styles.passengerRow}>
+      <View>
+        <Text style={styles.passengerLabel}>{label}</Text>
+        <Text style={styles.passengerSub}>{sublabel}</Text>
+      </View>
+      <View style={styles.passengerControls}>
+        <TouchableOpacity
+          style={[styles.counterBtn, value <= min && styles.counterBtnDisabled]}
+          onPress={() => onChange(Math.max(min, value - 1))}
+          disabled={value <= min}
+        >
+          <Minus color={value <= min ? C.muted : C.navy} size={14} />
+        </TouchableOpacity>
+        <Text style={styles.counterValue}>{value}</Text>
+        <TouchableOpacity style={styles.counterBtn} onPress={() => onChange(value + 1)}>
+          <Plus color={C.navy} size={14} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
 
-  // Date pickers
-  const [showStartPicker, setShowStartPicker] = useState(false);
-  const [showEndPicker, setShowEndPicker] = useState(false);
-  // Traveler picker
-  const [showTravelerPicker, setShowTravelerPicker] = useState(false);
+export default function PlanTripScreen() {
+  const [depAirport, setDepAirport] = useState<Airport | null>(null);
+  const [destAirport, setDestAirport] = useState<Airport | null>(null);
+  const [depDate, setDepDate] = useState<Date | null>(null);
+  const [retDate, setRetDate] = useState<Date | null>(null);
+  const [adults, setAdults] = useState(2);
+  const [children, setChildren] = useState(0);
+  const [infants, setInfants] = useState(0);
+  const [flightClass, setFlightClass] = useState<FlightClass>('economy');
+  const [includeCarRental, setIncludeCarRental] = useState(true);
+  const [includeHotel, setIncludeHotel] = useState(true);
+  const [loading, setLoading] = useState(false);
+
+  // Date picker state
+  const [showDepPicker, setShowDepPicker] = useState(false);
+  const [showRetPicker, setShowRetPicker] = useState(false);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const selectedTravelerLabel = TRAVELER_OPTIONS.find(o => o.value === travelers)?.label ?? `${travelers} People`;
+  const isFormValid = Boolean(depAirport) && Boolean(destAirport) && Boolean(depDate) && Boolean(retDate) && adults > 0;
 
-  const handlePlanTrip = useCallback(async () => {
-    if (!destination.trim()) {
-      Alert.alert('Missing Info', 'Please enter a destination.');
+  const handleSubmit = async () => {
+    if (!isFormValid) {
+      Alert.alert('Incomplete', 'Please fill in all required fields.');
       return;
     }
-    if (!startDate || !endDate) {
-      Alert.alert('Missing Dates', 'Please select your travel dates.');
-      return;
-    }
-    if (endDate <= startDate) {
-      Alert.alert('Invalid Dates', 'End date must be after start date.');
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      Alert.alert('Sign in required', 'Please sign in to plan your trip.');
       return;
     }
 
     setLoading(true);
     try {
-      // Call the same API the website uses
-      const response = await fetch(`${ENV.API_URL}/plan`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          destination: destination.trim(),
-          startDate: formatDateISO(startDate),
-          endDate: formatDateISO(endDate),
-          travelers: parseInt(travelers),
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Server error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      setResult(data);
-      setShowResult(true);
-    } catch (err: any) {
-      // Fallback: try direct Supabase edge function if REST API fails
-      try {
-        const { data, error } = await supabase.functions.invoke('plan-trip', {
-          body: {
-            destination: destination.trim(),
-            startDate: formatDateISO(startDate!),
-            endDate: formatDateISO(endDate!),
-            travelers: parseInt(travelers),
+      const { data, error } = await supabase.functions.invoke('get-dynamic-pricing', {
+        body: {
+          departureCity: `${depAirport!.city} (${depAirport!.iata_code})`,
+          destinationCity: `${destAirport!.city} (${destAirport!.iata_code})`,
+          departureLocation: {
+            iataCode: depAirport!.iata_code,
+            cityName: depAirport!.city,
+            countryCode: depAirport!.country.substring(0, 2).toUpperCase(),
           },
-        });
-        if (error) throw error;
-        setResult(data);
-        setShowResult(true);
-      } catch {
-        Alert.alert('Error', err?.message ?? 'Could not calculate trip cost. Please check your connection and try again.');
-      }
+          destinationLocation: {
+            iataCode: destAirport!.iata_code,
+            cityName: destAirport!.city,
+            countryCode: destAirport!.country.substring(0, 2).toUpperCase(),
+          },
+          departureDate: formatDateISO(depDate!),
+          returnDate: formatDateISO(retDate!),
+          passengers: { adults, children, infants },
+          flightClass,
+          includeCarRental,
+          includeHotel,
+        },
+      });
+      if (error) throw error;
+
+      // Save to trips table and navigate to results
+      const { data: trip, error: tripErr } = await supabase.from('trips').insert({
+        user_id: user.id,
+        departure_city: `${depAirport!.city} (${depAirport!.iata_code})`,
+        destination_city: `${destAirport!.city} (${destAirport!.iata_code})`,
+        departure_date: formatDateISO(depDate!),
+        return_date: formatDateISO(retDate!),
+        adults, children, infants,
+        flight_class: flightClass,
+        include_car_rental: includeCarRental,
+        include_hotel: includeHotel,
+        trip_plan: data,
+        status: 'complete',
+      }).select().single();
+
+      if (tripErr) throw tripErr;
+      Alert.alert('Trip Planned!', 'Your trip plan has been saved. View it in Trips.');
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Could not calculate trip costs. Please try again.');
     } finally {
       setLoading(false);
     }
-  }, [destination, startDate, endDate, travelers]);
+  };
 
-  const handleSaveTrip = useCallback(async () => {
-    if (!result) return;
-    setSaving(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        Alert.alert('Sign In Required', 'Please sign in to save trips.', [
-          { text: 'Cancel', style: 'cancel' },
-          // Navigation would go to login screen
-        ]);
-        return;
-      }
-
-      const { error } = await supabase.from('saved_trips').insert({
-        user_id: user.id,
-        destination,
-        start_date: formatDateISO(startDate!),
-        end_date: formatDateISO(endDate!),
-        travelers: parseInt(travelers),
-        total_cost: result.total,
-        cost_breakdown: result,
-        created_at: new Date().toISOString(),
-      });
-
-      if (error) throw error;
-      Alert.alert('Saved!', 'Your trip has been saved.');
-      setShowResult(false);
-    } catch (err: any) {
-      Alert.alert('Error', err?.message ?? 'Failed to save trip.');
-    } finally {
-      setSaving(false);
-    }
-  }, [result, destination, startDate, endDate, travelers]);
-
-  const nights = startDate && endDate
-    ? Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
-    : 0;
+  const classes: { value: FlightClass; label: string }[] = [
+    { value: 'economy', label: 'Economy' },
+    { value: 'business', label: 'Business' },
+    { value: 'first', label: 'First' },
+  ];
 
   return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-
+    <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
           {/* Header */}
-          <LinearGradient colors={['#3b82f6', '#1d4ed8']} style={styles.header}>
-            <View style={styles.headerContent}>
-              <Text style={styles.headerTitle}>Best Travel Plan</Text>
-              <Text style={styles.headerSubtitle}>Plan Your Complete Trip Cost in Minutes</Text>
-            </View>
-          </LinearGradient>
+          <View style={styles.pageHeader}>
+            <Text style={styles.pageTitle}>Plan My Trip</Text>
+            <Text style={styles.pageSubtitle}>
+              Search from 6,000+ airports worldwide
+            </Text>
+          </View>
 
-          {/* Form */}
-          <View style={styles.formContainer}>
-            <Text style={styles.sectionTitle}>Where do you want to go?</Text>
-
-            {/* Destination */}
-            <View style={styles.inputContainer}>
-              <MapPin color="#3b82f6" size={20} />
-              <TextInput
-                style={styles.input}
-                placeholder="Enter destination city or country"
-                value={destination}
-                onChangeText={setDestination}
-                placeholderTextColor="#9ca3af"
-                autoCorrect={false}
-                returnKeyType="done"
-              />
-              {destination.length > 0 && (
-                <TouchableOpacity onPress={() => setDestination('')}>
-                  <X color="#9ca3af" size={18} />
-                </TouchableOpacity>
-              )}
+          {/* Card: Destination */}
+          <View style={styles.card}>
+            <View style={styles.cardHeaderRow}>
+              <View style={styles.cardIconWrap}>
+                <Plane color={C.champagne} size={18} />
+              </View>
+              <View>
+                <Text style={styles.cardTitle}>Where would you like to go?</Text>
+                <Text style={styles.cardSubtitle}>Search airports by city or IATA code</Text>
+              </View>
             </View>
 
-            {/* Popular Destinations */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroll}>
-              {POPULAR.map((city) => (
+            <AirportSearch
+              label="Departure Airport"
+              placeholder="e.g. London, LHR, Dubai..."
+              value={depAirport}
+              onSelect={setDepAirport}
+              onClear={() => setDepAirport(null)}
+            />
+
+            <AirportSearch
+              label="Destination Airport"
+              placeholder="e.g. Paris, CDG, New York..."
+              value={destAirport}
+              onSelect={setDestAirport}
+              onClear={() => setDestAirport(null)}
+            />
+          </View>
+
+          {/* Card: Dates */}
+          <View style={styles.card}>
+            <View style={styles.cardHeaderRow}>
+              <View style={styles.cardIconWrap}>
+                <Calendar color={C.champagne} size={18} />
+              </View>
+              <View>
+                <Text style={styles.cardTitle}>When works best for you?</Text>
+              </View>
+            </View>
+
+            <View style={styles.datesRow}>
+              <View style={[styles.fieldGroup, { flex: 1 }]}>
+                <Text style={styles.label}>Departure Date</Text>
                 <TouchableOpacity
-                  key={city}
-                  style={[styles.chip, destination === city && styles.chipActive]}
-                  onPress={() => setDestination(city)}
+                  style={styles.inputWrap}
+                  onPress={() => { setShowRetPicker(false); setShowDepPicker(true); }}
                 >
-                  <Text style={[styles.chipText, destination === city && styles.chipTextActive]}>
-                    {city}
+                  <Calendar color={C.champagne} size={16} />
+                  <Text style={[styles.textInput, !depDate && { color: C.muted }]}>
+                    {depDate ? formatDate(depDate) : 'Pick a date'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ width: 10 }} />
+              <View style={[styles.fieldGroup, { flex: 1 }]}>
+                <Text style={styles.label}>Return Date</Text>
+                <TouchableOpacity
+                  style={styles.inputWrap}
+                  onPress={() => { setShowDepPicker(false); setShowRetPicker(true); }}
+                >
+                  <Calendar color={C.champagne} size={16} />
+                  <Text style={[styles.textInput, !retDate && { color: C.muted }]}>
+                    {retDate ? formatDate(retDate) : 'Pick a date'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {showDepPicker && (
+              <DateTimePicker
+                value={depDate ?? today}
+                mode="date"
+                minimumDate={today}
+                display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                onChange={(_, d) => { setShowDepPicker(false); if (d) setDepDate(d); }}
+              />
+            )}
+            {showRetPicker && (
+              <DateTimePicker
+                value={retDate ?? (depDate ?? today)}
+                mode="date"
+                minimumDate={depDate ?? today}
+                display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                onChange={(_, d) => { setShowRetPicker(false); if (d) setRetDate(d); }}
+              />
+            )}
+          </View>
+
+          {/* Card: Passengers */}
+          <View style={styles.card}>
+            <View style={styles.cardHeaderRow}>
+              <View style={styles.cardIconWrap}>
+                <Users color={C.champagne} size={18} />
+              </View>
+              <View>
+                <Text style={styles.cardTitle}>Who's coming along?</Text>
+                <Text style={styles.cardSubtitle}>Add passengers and select cabin class</Text>
+              </View>
+            </View>
+
+            <PassengerRow label="Adults" sublabel="Age 12+" value={adults} onChange={setAdults} min={1} />
+            <View style={styles.divider} />
+            <PassengerRow label="Children" sublabel="Age 2–11" value={children} onChange={setChildren} />
+            <View style={styles.divider} />
+            <PassengerRow label="Infants" sublabel="Under 2" value={infants} onChange={setInfants} />
+
+            <Text style={[styles.label, { marginTop: 16, marginBottom: 8 }]}>Cabin Class</Text>
+            <View style={styles.classRow}>
+              {classes.map((c) => (
+                <TouchableOpacity
+                  key={c.value}
+                  style={[styles.classBtn, flightClass === c.value && styles.classBtnActive]}
+                  onPress={() => setFlightClass(c.value)}
+                >
+                  <Text style={[styles.classBtnText, flightClass === c.value && styles.classBtnTextActive]}>
+                    {c.label}
                   </Text>
                 </TouchableOpacity>
               ))}
-            </ScrollView>
-
-            {/* Dates */}
-            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>When are you travelling?</Text>
-            <View style={styles.dateRow}>
-              {/* Start Date */}
-              <TouchableOpacity
-                style={[styles.inputContainer, styles.halfWidth]}
-                onPress={() => { setShowEndPicker(false); setShowStartPicker(true); }}
-              >
-                <Calendar color="#3b82f6" size={18} />
-                <Text style={[styles.input, !startDate && { color: '#9ca3af' }]}>
-                  {startDate ? formatDate(startDate) : 'Start date'}
-                </Text>
-              </TouchableOpacity>
-
-              {/* End Date */}
-              <TouchableOpacity
-                style={[styles.inputContainer, styles.halfWidth]}
-                onPress={() => { setShowStartPicker(false); setShowEndPicker(true); }}
-              >
-                <Calendar color="#3b82f6" size={18} />
-                <Text style={[styles.input, !endDate && { color: '#9ca3af' }]}>
-                  {endDate ? formatDate(endDate) : 'End date'}
-                </Text>
-              </TouchableOpacity>
             </View>
+          </View>
 
-            {/* Duration chip */}
-            {nights > 0 && (
-              <View style={styles.durationChip}>
-                <Clock color="#3b82f6" size={14} />
-                <Text style={styles.durationText}>{nights} night{nights !== 1 ? 's' : ''}</Text>
+          {/* Card: Options */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Optional Inclusions</Text>
+            <Text style={[styles.cardSubtitle, { marginBottom: 12 }]}>
+              Toggle items on or off to adjust your estimate
+            </Text>
+
+            <TouchableOpacity style={styles.toggleRow} onPress={() => setIncludeHotel(!includeHotel)}>
+              <View style={styles.toggleLeft}>
+                <View style={styles.toggleIconWrap}>
+                  <Hotel color={C.champagne} size={16} />
+                </View>
+                <View>
+                  <Text style={styles.toggleLabel}>Include Hotel</Text>
+                  <Text style={styles.toggleSub}>Accommodation cost estimate</Text>
+                </View>
               </View>
-            )}
-
-            {/* iOS Date pickers */}
-            {Platform.OS === 'ios' && showStartPicker && (
-              <DateTimePicker
-                value={startDate ?? today}
-                mode="date"
-                minimumDate={today}
-                onChange={(_, d) => { setShowStartPicker(false); if (d) setStartDate(d); }}
-              />
-            )}
-            {Platform.OS === 'ios' && showEndPicker && (
-              <DateTimePicker
-                value={endDate ?? (startDate ?? today)}
-                mode="date"
-                minimumDate={startDate ?? today}
-                onChange={(_, d) => { setShowEndPicker(false); if (d) setEndDate(d); }}
-              />
-            )}
-
-            {/* Android Date pickers */}
-            {Platform.OS === 'android' && showStartPicker && (
-              <DateTimePicker
-                value={startDate ?? today}
-                mode="date"
-                minimumDate={today}
-                display="default"
-                onChange={(_, d) => { setShowStartPicker(false); if (d) setStartDate(d); }}
-              />
-            )}
-            {Platform.OS === 'android' && showEndPicker && (
-              <DateTimePicker
-                value={endDate ?? (startDate ?? today)}
-                mode="date"
-                minimumDate={startDate ?? today}
-                display="default"
-                onChange={(_, d) => { setShowEndPicker(false); if (d) setEndDate(d); }}
-              />
-            )}
-
-            {/* Travelers */}
-            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>How many travellers?</Text>
-            <TouchableOpacity
-              style={styles.inputContainer}
-              onPress={() => setShowTravelerPicker(true)}
-            >
-              <Users color="#3b82f6" size={20} />
-              <Text style={styles.input}>{selectedTravelerLabel}</Text>
-              <ChevronDown color="#9ca3af" size={18} />
+              <View style={[styles.toggle, includeHotel && styles.toggleActive]}>
+                <View style={[styles.toggleThumb, includeHotel && styles.toggleThumbActive]} />
+              </View>
             </TouchableOpacity>
 
-            {/* Plan Button */}
-            <TouchableOpacity
-              style={styles.planButton}
-              onPress={handlePlanTrip}
-              activeOpacity={0.85}
-              disabled={loading}
-            >
-              <LinearGradient
-                colors={['#3b82f6', '#1d4ed8']}
-                style={styles.planButtonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                {loading
-                  ? <ActivityIndicator color="#fff" size="small" />
-                  : <>
-                      <Plane color="#ffffff" size={20} />
-                      <Text style={styles.planButtonText}>Calculate Trip Cost</Text>
-                    </>
-                }
-              </LinearGradient>
+            <View style={styles.divider} />
+
+            <TouchableOpacity style={styles.toggleRow} onPress={() => setIncludeCarRental(!includeCarRental)}>
+              <View style={styles.toggleLeft}>
+                <View style={styles.toggleIconWrap}>
+                  <Car color={C.champagne} size={16} />
+                </View>
+                <View>
+                  <Text style={styles.toggleLabel}>Include Car Rental</Text>
+                  <Text style={styles.toggleSub}>Airport pickup included</Text>
+                </View>
+              </View>
+              <View style={[styles.toggle, includeCarRental && styles.toggleActive]}>
+                <View style={[styles.toggleThumb, includeCarRental && styles.toggleThumbActive]} />
+              </View>
             </TouchableOpacity>
           </View>
+
+          {/* Submit Button */}
+          <TouchableOpacity
+            style={[styles.submitBtn, !isFormValid && styles.submitBtnDisabled]}
+            onPress={handleSubmit}
+            disabled={!isFormValid || loading}
+            activeOpacity={0.85}
+          >
+            {loading
+              ? <ActivityIndicator color={C.ivory} size="small" />
+              : <>
+                  <Plane color={C.ivory} size={18} />
+                  <Text style={styles.submitBtnText}>Plan My Trip</Text>
+                </>
+            }
+          </TouchableOpacity>
+
+          <View style={{ height: 32 }} />
         </ScrollView>
       </KeyboardAvoidingView>
-
-      {/* Traveler Picker Modal */}
-      <Modal visible={showTravelerPicker} transparent animationType="slide">
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowTravelerPicker(false)}
-        >
-          <View style={styles.pickerSheet}>
-            <View style={styles.pickerHandle} />
-            <Text style={styles.pickerTitle}>Number of Travellers</Text>
-            {TRAVELER_OPTIONS.map(opt => (
-              <TouchableOpacity
-                key={opt.value}
-                style={[styles.pickerOption, travelers === opt.value && styles.pickerOptionActive]}
-                onPress={() => { setTravelers(opt.value); setShowTravelerPicker(false); }}
-              >
-                <Text style={[styles.pickerOptionText, travelers === opt.value && styles.pickerOptionTextActive]}>
-                  {opt.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* Result Modal */}
-      <Modal visible={showResult} transparent animationType="slide">
-        <View style={styles.resultOverlay}>
-          <View style={styles.resultSheet}>
-            <View style={styles.pickerHandle} />
-
-            <View style={styles.resultHeader}>
-              <View>
-                <Text style={styles.resultTitle}>✈️ {destination}</Text>
-                <Text style={styles.resultSub}>
-                  {formatDate(startDate!)} – {formatDate(endDate!)} · {travelers} traveller{parseInt(travelers) > 1 ? 's' : ''}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={() => setShowResult(false)}>
-                <X color="#9ca3af" size={22} />
-              </TouchableOpacity>
-            </View>
-
-            {result && (
-              <ScrollView showsVerticalScrollIndicator={false}>
-                {/* Cost rows */}
-                {[
-                  { label: '✈️  Flights', value: result.flights },
-                  { label: '🏨  Accommodation', value: result.accommodation },
-                  { label: '🚕  Local Transport', value: result.transport },
-                  { label: '🍽️  Food & Dining', value: result.food },
-                  { label: '🎭  Activities & Sights', value: result.activities },
-                ].map(row => (
-                  <View key={row.label} style={styles.costRow}>
-                    <Text style={styles.costLabel}>{row.label}</Text>
-                    <Text style={styles.costValue}>{fmtMoney(row.value, result.currency)}</Text>
-                  </View>
-                ))}
-
-                <View style={styles.costTotalRow}>
-                  <View>
-                    <Text style={styles.costTotalLabel}>Total Estimate</Text>
-                    <Text style={styles.costTotalSub}>for {result.nights} nights</Text>
-                  </View>
-                  <Text style={styles.costTotalValue}>{fmtMoney(result.total, result.currency)}</Text>
-                </View>
-
-                <View style={styles.resultActions}>
-                  <TouchableOpacity style={styles.btnSecondary} onPress={() => setShowResult(false)}>
-                    <Text style={styles.btnSecondaryText}>Close</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.btnPrimary} onPress={handleSaveTrip} disabled={saving}>
-                    {saving
-                      ? <ActivityIndicator color="#fff" size="small" />
-                      : <Text style={styles.btnPrimaryText}>💾  Save Trip</Text>
-                    }
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
-            )}
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f9fafb' },
-  header: {
-    paddingTop: Platform.OS === 'ios' ? 20 : 40,
-    paddingBottom: 36,
-    paddingHorizontal: 24,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
-  },
-  headerContent: { alignItems: 'center' },
-  headerTitle: { fontSize: 28, fontWeight: '800', color: '#fff', marginBottom: 6 },
-  headerSubtitle: { fontSize: 15, color: '#e0e7ff', textAlign: 'center', lineHeight: 22 },
+  safeArea: { flex: 1, backgroundColor: C.ivory },
+  scroll: { flex: 1 },
+  scrollContent: { padding: 16 },
 
-  formContainer: { padding: 20 },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#1f2937', marginBottom: 12 },
+  pageHeader: { marginBottom: 20, paddingTop: 8 },
+  pageTitle: { fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 28, fontWeight: '600', color: C.navy, marginBottom: 4 },
+  pageSubtitle: { fontSize: 14, color: C.muted },
 
-  inputContainer: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#fff', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14,
-    marginBottom: 12, borderWidth: 1.5, borderColor: '#e5e7eb',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
+  card: {
+    backgroundColor: C.card, borderRadius: 16, padding: 18, marginBottom: 14,
+    borderWidth: 1, borderColor: C.champagneLight,
+    shadowColor: C.navy, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
   },
-  input: { flex: 1, fontSize: 15, color: '#1f2937' },
-  dateRow: { flexDirection: 'row', gap: 10 },
-  halfWidth: { flex: 1, marginBottom: 12 },
+  cardHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 16 },
+  cardIconWrap: {
+    width: 40, height: 40, borderRadius: 12,
+    backgroundColor: C.champagneLight, alignItems: 'center', justifyContent: 'center',
+  },
+  cardTitle: { fontSize: 15, fontWeight: '600', color: C.navy, marginBottom: 2 },
+  cardSubtitle: { fontSize: 13, color: C.muted },
 
-  chipsScroll: { marginBottom: 4, marginHorizontal: -4 },
-  chip: {
-    backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#e5e7eb',
-    borderRadius: 20, paddingVertical: 8, paddingHorizontal: 16, marginRight: 8, marginHorizontal: 4,
+  fieldGroup: { marginBottom: 12 },
+  label: { fontSize: 13, fontWeight: '500', color: C.navy, marginBottom: 6 },
+  inputWrap: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: C.ivory, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 12,
+    borderWidth: 1, borderColor: C.border,
   },
-  chipActive: { backgroundColor: '#3b82f6', borderColor: '#3b82f6' },
-  chipText: { fontSize: 14, color: '#3b82f6', fontWeight: '500' },
-  chipTextActive: { color: '#fff' },
+  textInput: { flex: 1, fontSize: 14, color: C.navy, padding: 0 },
 
-  durationChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: '#eff6ff', alignSelf: 'flex-start',
-    borderRadius: 12, paddingVertical: 5, paddingHorizontal: 10, marginBottom: 8,
-  },
-  durationText: { fontSize: 13, color: '#3b82f6', fontWeight: '600' },
+  selectedAirport: { flex: 1 },
+  selectedAirportText: { fontSize: 14, fontWeight: '600', color: C.navy },
+  selectedAirportSub: { fontSize: 12, color: C.muted, marginTop: 1 },
 
-  planButton: {
-    marginTop: 24, borderRadius: 14, overflow: 'hidden',
-    shadowColor: '#3b82f6', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 10, elevation: 8,
+  dropdown: {
+    backgroundColor: C.white, borderRadius: 10, marginTop: 4,
+    borderWidth: 1, borderColor: C.champagneLight,
+    shadowColor: C.navy, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 6,
+    zIndex: 99,
   },
-  planButtonGradient: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 18, gap: 10,
-  },
-  planButtonText: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  dropdownItem: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderBottomWidth: 1, borderBottomColor: C.ivoryDark },
+  dropdownCode: { fontSize: 14, fontWeight: '700', color: C.accent, width: 36 },
+  dropdownCity: { fontSize: 14, fontWeight: '600', color: C.navy },
+  dropdownName: { fontSize: 12, color: C.muted },
 
-  // Traveler Modal
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-  pickerSheet: {
-    backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24,
-    paddingBottom: 40,
-  },
-  pickerHandle: { width: 40, height: 4, backgroundColor: '#d1d5db', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-  pickerTitle: { fontSize: 18, fontWeight: '700', color: '#1f2937', marginBottom: 16 },
-  pickerOption: { paddingVertical: 14, paddingHorizontal: 16, borderRadius: 12, marginBottom: 4 },
-  pickerOptionActive: { backgroundColor: '#eff6ff' },
-  pickerOptionText: { fontSize: 16, color: '#374151' },
-  pickerOptionTextActive: { color: '#3b82f6', fontWeight: '700' },
+  datesRow: { flexDirection: 'row', marginBottom: 0 },
 
-  // Result Modal
-  resultOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  resultSheet: {
-    backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28,
-    padding: 24, paddingBottom: 40, maxHeight: '85%',
+  passengerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10 },
+  passengerLabel: { fontSize: 14, fontWeight: '500', color: C.navy },
+  passengerSub: { fontSize: 12, color: C.muted, marginTop: 1 },
+  passengerControls: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  counterBtn: {
+    width: 32, height: 32, borderRadius: 16, borderWidth: 1, borderColor: C.border,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: C.white,
   },
-  resultHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
-  resultTitle: { fontSize: 20, fontWeight: '800', color: '#1f2937', marginBottom: 4 },
-  resultSub: { fontSize: 14, color: '#6b7280' },
+  counterBtnDisabled: { opacity: 0.4 },
+  counterValue: { fontSize: 18, fontWeight: '600', color: C.navy, minWidth: 24, textAlign: 'center' },
 
-  costRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f3f4f6',
+  classRow: { flexDirection: 'row', gap: 8 },
+  classBtn: {
+    flex: 1, paddingVertical: 10, borderRadius: 8, borderWidth: 1,
+    borderColor: C.border, alignItems: 'center', backgroundColor: C.white,
   },
-  costLabel: { fontSize: 15, color: '#374151' },
-  costValue: { fontSize: 15, fontWeight: '700', color: '#1f2937' },
+  classBtnActive: { backgroundColor: C.navy, borderColor: C.navy },
+  classBtnText: { fontSize: 13, fontWeight: '500', color: C.navy },
+  classBtnTextActive: { color: C.ivory },
 
-  costTotalRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingTop: 16, marginBottom: 4,
-  },
-  costTotalLabel: { fontSize: 16, fontWeight: '700', color: '#1f2937' },
-  costTotalSub: { fontSize: 13, color: '#9ca3af' },
-  costTotalValue: { fontSize: 28, fontWeight: '800', color: '#3b82f6' },
+  toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10 },
+  toggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  toggleIconWrap: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.champagneLight, alignItems: 'center', justifyContent: 'center' },
+  toggleLabel: { fontSize: 14, fontWeight: '500', color: C.navy },
+  toggleSub: { fontSize: 12, color: C.muted, marginTop: 1 },
+  toggle: { width: 44, height: 24, borderRadius: 12, backgroundColor: '#D1D5DB', padding: 2 },
+  toggleActive: { backgroundColor: C.accent },
+  toggleThumb: { width: 20, height: 20, borderRadius: 10, backgroundColor: C.white },
+  toggleThumbActive: { transform: [{ translateX: 20 }] },
 
-  resultActions: { flexDirection: 'row', gap: 10, marginTop: 20 },
-  btnSecondary: {
-    flex: 1, padding: 14, borderRadius: 12, borderWidth: 1.5, borderColor: '#e5e7eb', alignItems: 'center',
+  divider: { height: 1, backgroundColor: C.ivoryDark, marginVertical: 2 },
+
+  submitBtn: {
+    backgroundColor: C.navy, borderRadius: 12, paddingVertical: 16,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 8,
   },
-  btnSecondaryText: { fontSize: 15, fontWeight: '600', color: '#374151' },
-  btnPrimary: {
-    flex: 2, padding: 14, borderRadius: 12, backgroundColor: '#3b82f6', alignItems: 'center',
-    shadowColor: '#3b82f6', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 5,
-  },
-  btnPrimaryText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  submitBtnDisabled: { opacity: 0.5 },
+  submitBtnText: { color: C.ivory, fontSize: 16, fontWeight: '600' },
 });
